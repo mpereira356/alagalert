@@ -1,0 +1,67 @@
+[
+  {
+    "uf": "SP",
+    "nome": "São Paulo",
+    "centroid": { "lat": -23.5505, "lon": -46.6333 }
+  },
+  {
+    "uf": "RJ",
+    "nome": "Rio de Janeiro",
+    "centroid": { "lat": -22.9068, "lon": -43.1729 }
+  },
+  {
+    "uf": "SP",
+    "nome": "Campinas",
+    "centroid": { "lat": -22.9053, "lon": -47.0647 }
+  },
+  {
+    "uf": "SP",
+    "nome": "Santos",
+    "centroid": { "lat": -23.958, "lon": -46.3336 }
+  },
+  {
+    "uf": "SP",
+    "nome": "Guarulhos",
+    "centroid": { "lat": -23.4543, "lon": -46.5337 }
+  },
+  {
+    "uf": "RJ",
+    "nome": "Niterói",
+    "centroid": { "lat": -22.8832, "lon": -43.1034 }
+  },
+  {
+    "uf": "MG",
+    "nome": "Belo Horizonte",
+    "centroid": { "lat": -19.9167, "lon": -43.9345 }
+  },
+  {
+    "uf": "PR",
+    "nome": "Curitiba",
+    "centroid": { "lat": -25.4284, "lon": -49.2733 }
+  },
+  {
+    "uf": "DF",
+    "nome": "Brasília",
+    "centroid": { "lat": -15.7934, "lon": -47.8822 }
+  },
+  {
+    "uf": "BA",
+    "nome": "Salvador",
+    "centroid": { "lat": -12.9777, "lon": -38.5016 }
+  },
+  {
+    "uf": "PE",
+    "nome": "Recife",
+    "centroid": { "lat": -8.0543, "lon": -34.8813 }
+  },
+  {
+    "uf": "CE",
+    "nome": "Fortaleza",
+    "centroid": { "lat": -3.7319, "lon": -38.5267 }
+  },
+  {
+    "uf": "RS",
+    "nome": "Porto Alegre",
+    "centroid": { "lat": -30.0346, "lon": -51.2177 }
+  }
+]

@@ -1,0 +1,14 @@
+﻿{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "UF": "SP" }, "geometry": null },
+    { "type": "Feature", "properties": { "UF": "RJ" }, "geometry": null },
+    { "type": "Feature", "properties": { "UF": "MG" }, "geometry": null },
+    { "type": "Feature", "properties": { "UF": "PR" }, "geometry": null },
+    { "type": "Feature", "properties": { "UF": "DF" }, "geometry": null },
+    { "type": "Feature", "properties": { "UF": "BA" }, "geometry": null },
+    { "type": "Feature", "properties": { "UF": "PE" }, "geometry": null },
+    { "type": "Feature", "properties": { "UF": "CE" }, "geometry": null },
+    { "type": "Feature", "properties": { "UF": "RS" }, "geometry": null }
+  ]
+}

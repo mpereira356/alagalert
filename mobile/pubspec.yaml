@@ -1,0 +1,21 @@
+﻿name: alagalert
+description: App de risco de alagamento
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_fonts: ^6.1.0
+  flutter_animate: ^4.5.0
+  http: ^1.2.2
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/ibge/
