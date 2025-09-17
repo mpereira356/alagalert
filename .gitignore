@@ -1,0 +1,11 @@
+# Flutter
+/mobile/build/
+/mobile/.dart_tool/
+/mobile/.idea/
+/mobile/.flutter-plugins*
+/mobile/.packages
+
+# Python
+/backend/.venv/
+__pycache__/
+*.pyc
