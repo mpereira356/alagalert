@@ -1,20 +1,15 @@
-# AlagAlert – Mobile (Flutter)
+# alagalert
 
-Aplicativo em Flutter que consome a API do **AlagAlert** e apresenta ao usuário
-o risco de alagamentos em cidades brasileiras.
 
-#  Requisitos
-- Flutter SDK (stable)
-- Android Studio / Emulador / Chrome
+# Verificador de possiveis alagamentos em respectivas cidades 
 
-# Como rodar (dev)
-```bash
-cd mobile
-flutter clean
-flutter pub get
 
-# Web
-flutter run -d chrome --dart-define=API_URL=http://127.0.0.1:8000
+# como ativar:
+No backend entrar no venv primeiro, depois ex: \Desktop\alagalert\backend> # DIGITAR:  uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# Android 
-flutter run --dart-define=API_URL=http://10.0.2.2:8000
+Agora na pasta mobile, DIGITAR:
+flutter clean  
+flutter pub get  
+flutter run -d chrome
+
+Abrirá o navegador.
