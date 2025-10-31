@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from .services.regions import load_regions_geojson
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -15,14 +14,14 @@ from slowapi.util import get_remote_address
 
 import httpx
 
-# ---- serviços locais -------------------------------------------------
+# serviços locais
+from .services.regions import load_regions_geojson
 from .services.geocode import (
-    nominatim_lookup,           # busca de cidades/localidades
-    nominatim_lookup_states,    # busca de estados/UFs
+    nominatim_lookup,
+    nominatim_lookup_states,
 )
 from .services.weather_client import fetch_hourly_forecast
 from .utils.risk_engine import compute_risk
-
 
 # ---------------------------------------------------------------------
 # Config
@@ -37,7 +36,7 @@ app = FastAPI(title="AlagAlert API", version="0.7.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS (permite Flutter Web / apps acessarem a API)
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=".*",
@@ -46,14 +45,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # ---------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------
 class RiskBody(BaseModel):
     lat: float
     lon: float
-
 
 # ---------------------------------------------------------------------
 # Health
@@ -63,37 +60,44 @@ class RiskBody(BaseModel):
 def health(request: Request):
     return JSONResponse({"ok": True})
 
-
 # ---------------------------------------------------------------------
-# Geocode (Nominatim) - CIDADES
+# Geocode (cidades)
 # ---------------------------------------------------------------------
 @app.get("/geocode")
-@limiter.limit(RATE_LIMIT)
 async def geocode(
     request: Request,
-    q: str = Query(..., min_length=1, description="Cidade livre, ex.: 'campinas sp'"),
-    country: Optional[str] = Query("br", min_length=0, max_length=2),
-    limit: int = Query(8, ge=1, le=20),
+    q: str = Query(..., min_length=1),
+    country: str = Query("br"),
+    limit: int = Query(8, ge=1, le=50),  # <-- aumentado para aceitar até 50
     cities_only: bool = Query(True),
+    uf: Optional[str] = Query(
+        None, min_length=2, max_length=2, description="Filtro opcional de UF (ex: SP, RJ)"
+    ),
 ):
+    """Busca cidades via Nominatim com filtro opcional por UF."""
     try:
+        from .services.geocode import nominatim_lookup, nominatim_lookup_structured_city_uf
+
         results = await nominatim_lookup(
             query=q,
-            country=country if country else None,
+            country=country,
             limit=limit,
             cities_only=cities_only,
+            prefer_uf=(uf or "").upper() or None,
         )
-        if results:
-            return JSONResponse(results)
-        raise HTTPException(404, detail="Nenhuma localidade encontrada")
+
+        if (not results) and uf:
+            results = await nominatim_lookup_structured_city_uf(
+                city=q, uf=uf.upper(), limit=limit
+            )
+
+        return results or []
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Falha ao consultar Nominatim: {e}")
-
+        raise HTTPException(status_code=502, detail=f"Erro ao consultar Nominatim: {e}")
 
 # ---------------------------------------------------------------------
-# Geocode (Nominatim) - ESTADOS (UFs)
+# Geocode (estados)
 # ---------------------------------------------------------------------
-# /geocode-states -> busca ESTADOS no Nominatim
 @app.get("/geocode-states")
 @limiter.limit(RATE_LIMIT)
 async def geocode_states(
@@ -102,19 +106,13 @@ async def geocode_states(
     country: Optional[str] = Query("br", min_length=0, max_length=2),
     limit: int = Query(27, ge=1, le=27),
 ):
-    from .services.geocode import nominatim_lookup_states
-    results = await nominatim_lookup_states(
-        query=q,
-        country=country if country else None,
-        limit=limit,
-    )
+    results = await nominatim_lookup_states(query=q, country=country or None, limit=limit)
     if not results:
         raise HTTPException(404, detail="Nenhum estado encontrado")
     return JSONResponse(results)
 
-
 # ---------------------------------------------------------------------
-# Estados/Cidades via IBGE (opcional)
+# IBGE – estados e cidades
 # ---------------------------------------------------------------------
 @app.get("/states")
 @limiter.limit(RATE_LIMIT)
@@ -129,7 +127,6 @@ async def list_states(request: Request):
             return [{"sigla": uf["sigla"], "nome": uf["nome"]} for uf in data]
     except httpx.HTTPError as e:
         raise HTTPException(502, detail=f"Falha IBGE estados: {e}")
-
 
 @app.get("/cities")
 @limiter.limit(RATE_LIMIT)
@@ -149,21 +146,8 @@ async def list_cities_by_state(
     except httpx.HTTPError as e:
         raise HTTPException(502, detail=f"Falha IBGE municípios: {e}")
 
-
 # ---------------------------------------------------------------------
 # Risco por cidade
-# ---------------------------------------------------------------------
-UF_TO_STATE = {
-    "AC": "Acre","AL":"Alagoas","AP":"Amapá","AM":"Amazonas","BA":"Bahia","CE":"Ceará",
-    "DF":"Distrito Federal","ES":"Espírito Santo","GO":"Goiás","MA":"Maranhão",
-    "MT":"Mato Grosso","MS":"Mato Grosso do Sul","MG":"Minas Gerais","PA":"Pará",
-    "PB":"Paraíba","PR":"Paraná","PE":"Pernambuco","PI":"Piauí","RJ":"Rio de Janeiro",
-    "RN":"Rio Grande do Norte","RS":"Rio Grande do Sul","RO":"Rondônia","RR":"Roraima",
-    "SC":"Santa Catarina","SP":"São Paulo","SE":"Sergipe","TO":"Tocantins"
-}
-
-# ---------------------------------------------------------------------
-# Risco por cidade (resolve lat/lon por Nominatim)
 # ---------------------------------------------------------------------
 @app.get("/risk/by-city")
 @limiter.limit(RATE_LIMIT)
@@ -172,10 +156,8 @@ async def risk_by_city(
     uf: str = Query(..., min_length=2, max_length=2),
     city: str = Query(..., min_length=1),
 ):
-    """Calcula risco por cidade usando Nominatim para obter lat/lon."""
     uf = uf.upper()
 
-    # 1) tentativa com busca livre priorizando a UF
     nomi = await nominatim_lookup(
         query=f"{city} {uf}, Brasil",
         country="br",
@@ -184,7 +166,6 @@ async def risk_by_city(
         prefer_uf=uf,
     )
 
-    # 2) fallback estruturado city+state+Brazil
     if not nomi:
         from .services.geocode import nominatim_lookup_structured_city_uf
         nomi = await nominatim_lookup_structured_city_uf(city=city, uf=uf, limit=5)
@@ -192,7 +173,6 @@ async def risk_by_city(
     if not nomi:
         raise HTTPException(404, detail="Cidade não encontrada no Nominatim")
 
-    # >>> ESTA PARTE FALTAVA <<<
     lat = float(nomi[0]["lat"])
     lon = float(nomi[0]["lon"])
 
@@ -212,9 +192,8 @@ async def risk_by_coords(request: Request, body: RiskBody):
     result["location"] = {"lat": body.lat, "lon": body.lon}
     return JSONResponse(result)
 
-
 # ---------------------------------------------------------------------
-# Risco por UF (usado no mapa)
+# Risco por UF (para mapa)
 # ---------------------------------------------------------------------
 @app.get("/risk/by-uf")
 @limiter.limit(RATE_LIMIT)
@@ -258,9 +237,8 @@ async def risk_by_uf(
         raise HTTPException(404, detail=f"Nenhum município encontrado para {uf}")
     return JSONResponse(out)
 
-
 # ---------------------------------------------------------------------
-# Regions (compat para o front do mapa)
+# Regions (GeoJSON)
 # ---------------------------------------------------------------------
 @app.get("/regions")
 @limiter.limit(RATE_LIMIT)
@@ -269,11 +247,6 @@ async def regions(
     level: str = Query(..., pattern="^(state|city)$"),
     uf: Optional[str] = Query(None, min_length=2, max_length=2),
 ):
-    """
-    Retorna polígonos IBGE para o mapa do front-end.
-    - level=state: retorna todas as UFs
-    - level=city: retorna municípios da UF informada
-    """
     try:
         gj = load_regions_geojson(level=level, uf=(uf.upper() if uf else None))
         if gj is None:
@@ -281,7 +254,6 @@ async def regions(
         return JSONResponse(gj)
     except Exception as e:
         raise HTTPException(500, detail=f"Erro ao carregar regiões: {e}")
-
 
 # ---------------------------------------------------------------------
 # Servir Flutter Web na raiz
@@ -295,4 +267,3 @@ if os.path.isdir(WEB_DIR) and os.path.exists(os.path.join(WEB_DIR, "index.html")
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
 else:
     print(f"[AlagAlert] AVISO: Pasta WEB não encontrada ou sem index.html: {WEB_DIR}")
-

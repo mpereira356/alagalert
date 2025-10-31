@@ -1,7 +1,13 @@
 // lib/screens/city_picker_screen.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_typeahead/flutter_typeahead.dart';
 import '../services/geocode_service.dart';
+
+// Lista estática de UFs para o Dropdown
+const List<String> _ufs = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
+  'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
+  'SP', 'SE', 'TO'
+];
 
 class CityPickerScreen extends StatefulWidget {
   final String? initialUf;    // sigla (ex.: SP)
@@ -14,7 +20,6 @@ class CityPickerScreen extends StatefulWidget {
 }
 
 class _CityPickerScreenState extends State<CityPickerScreen> {
-  final _ufCtl = TextEditingController();
   final _cityCtl = TextEditingController();
 
   String? _selectedUf;
@@ -25,7 +30,6 @@ class _CityPickerScreenState extends State<CityPickerScreen> {
     super.initState();
     if (widget.initialUf != null && widget.initialUf!.isNotEmpty) {
       _selectedUf = widget.initialUf!.toUpperCase();
-      _ufCtl.text = _selectedUf!;
     }
     if (widget.initialCity != null && widget.initialCity!.isNotEmpty) {
       _selectedCity = widget.initialCity!;
@@ -54,64 +58,55 @@ class _CityPickerScreenState extends State<CityPickerScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('Estado (digite a sigla ou nome)'),
+          const Text('Estado (Selecione a UF)'),
           const SizedBox(height: 8),
-          TypeAheadField<Map<String, String>>(
-            suggestionsCallback: (pattern) async {
-              return GeocodeService.suggestStates(pattern);
-            },
-            builder: (context, controller, focusNode) {
-              controller.text = _ufCtl.text;
-              return TextField(
-                controller: controller,
-                focusNode: focusNode,
-                decoration: const InputDecoration(
-                  hintText: 'Ex.: SP, RJ, São Paulo…',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search),
-                ),
+          
+          // --- Dropdown para Estado (Lista Estática) ---
+          DropdownButtonFormField<String>(
+            value: _selectedUf,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'Selecione o Estado',
+            ),
+            items: _ufs.map((String uf) {
+              return DropdownMenuItem<String>(
+                value: uf,
+                child: Text(uf),
               );
+            }).toList(),
+            onChanged: (String? newValue) {
+              setState(() {
+                _selectedUf = newValue;
+                // Limpa cidade ao trocar UF
+                _selectedCity = null;
+                _cityCtl.clear();
+              });
             },
-            itemBuilder: (context, item) {
-              final uf = item['uf'] ?? '';
-              final st = item['state'] ?? '';
-              return ListTile(
-                leading: const Icon(Icons.flag_outlined),
-                title: Text('$uf — $st'),
-                subtitle: Text(item['displayName'] ?? ''),
-              );
-            },
-            onSelected: (item) {
-              _selectedUf = (item['uf'] ?? '').toUpperCase();
-              _ufCtl.text = _selectedUf!;
-              // Limpa cidade ao trocar UF
-              _selectedCity = null;
-              _cityCtl.clear();
-              setState(() {});
-            },
-            emptyBuilder: (context) =>
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text('Nenhum estado encontrado'),
-                ),
           ),
+          // --- Fim Dropdown Estado ---
 
           const SizedBox(height: 16),
           const Text('Cidade (digite para buscar)'),
           const SizedBox(height: 8),
-          TypeAheadField<Map<String, String>>(
-            suggestionsCallback: (pattern) async {
-              if (_selectedUf == null || _selectedUf!.isEmpty) return [];
-              if (pattern.trim().isEmpty) return [];
-              return GeocodeService.suggestCities(
-                query: pattern,
+          
+          // --- Autocomplete para Cidade (Busca Dinâmica) ---
+          Autocomplete<Map<String, String>>(
+            optionsBuilder: (TextEditingValue textEditingValue) async {
+              if (_selectedUf == null || _selectedUf!.isEmpty || textEditingValue.text.trim().isEmpty) {
+                return const Iterable<Map<String, String>>.empty();
+              }
+              // Chama o serviço de busca dinâmica (que sabemos que funciona no backend)
+              return await GeocodeService.suggestCities(
+                query: textEditingValue.text,
                 uf: _selectedUf!,
               );
             },
-            builder: (context, controller, focusNode) {
-              controller.text = _cityCtl.text;
+            displayStringForOption: (Map<String, String> option) => option['city'] ?? '',
+
+            fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+              textEditingController.text = _cityCtl.text;
               return TextField(
-                controller: controller,
+                controller: textEditingController,
                 focusNode: focusNode,
                 enabled: _selectedUf != null && _selectedUf!.isNotEmpty,
                 decoration: InputDecoration(
@@ -121,26 +116,49 @@ class _CityPickerScreenState extends State<CityPickerScreen> {
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.location_city),
                 ),
+                onChanged: (text) {
+                  _cityCtl.text = text;
+                  setState(() {});
+                },
               );
             },
-            itemBuilder: (context, item) {
-              return ListTile(
-                leading: const Icon(Icons.location_on_outlined),
-                title: Text(item['city'] ?? ''),
-                subtitle: Text(item['displayName'] ?? ''),
+            
+            optionsViewBuilder: (context, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 4.0,
+                  child: SizedBox(
+                    height: 250.0,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(8.0),
+                      itemCount: options.length,
+                      itemBuilder: (BuildContext context, int index) {
+                        final Map<String, String> item = options.elementAt(index);
+                        return GestureDetector(
+                          onTap: () {
+                            onSelected(item);
+                          },
+                          child: ListTile(
+                            leading: const Icon(Icons.location_on_outlined),
+                            title: Text(item['city'] ?? ''
+                            subtitle: Text(item['displayName'] ?? ''
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
               );
             },
-            onSelected: (item) {
+
+            onSelected: (Map<String, String> item) {
               _selectedCity = item['city'];
               _cityCtl.text = _selectedCity ?? '';
               setState(() {});
             },
-            emptyBuilder: (context) =>
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text('Nenhuma cidade encontrada'),
-                ),
           ),
+          // --- Fim Autocomplete Cidade ---
 
           const SizedBox(height: 24),
           FilledButton(

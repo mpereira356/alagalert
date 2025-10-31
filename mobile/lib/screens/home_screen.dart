@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import '../services/geocode_service.dart';
-import 'package:http/http.dart' as http;
-
+import 'risk_result_screen.dart';
+import 'map_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,31 +12,27 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Estado selecionado (sigla e nome)
-  String? _selectedUf;        // ex.: "SP"
-  String? _selectedStateName; // ex.: "São Paulo"
+  TextEditingController? _ufFieldCtrl;
+  TextEditingController? _cityFieldCtrl;
 
-  // Cidade selecionada
-  String? _selectedCity;
-
-  // Controllers pros inputs
-  final _ufController = TextEditingController();
-  final _cityController = TextEditingController();
-
-  // Para evitar spams de request
-  bool _loadingRisk = false;
-
-  @override
-  void dispose() {
-    _ufController.dispose();
-    _cityController.dispose();
-    super.dispose();
+  // Normaliza: "BR:SP" -> "SP"
+  String _cleanUf(dynamic v) {
+    final s = (v ?? '').toString();
+    final m = RegExp(r'([A-Za-z]{2})$').firstMatch(s);
+    return (m?.group(1) ?? s).toUpperCase();
   }
 
+  String? _selectedUf;        // ex.: "SP"
+  String? _selectedStateName; // ex.: "São Paulo"
+  String? _selectedCity;      // ex.: "Santos"
+
+  bool _loadingRisk = false;
+
   Future<void> _verRisco() async {
-    final uf = _selectedUf?.trim();
+    final uf = _cleanUf(_selectedUf);
     final city = _selectedCity?.trim();
-    if (uf == null || uf.isEmpty) {
+
+    if (uf.isEmpty) {
       _showSnack('Escolha um estado primeiro.');
       return;
     }
@@ -46,42 +42,39 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (_loadingRisk) return;
 
-    setState(() => _loadingRisk = true);
-    try {
-      final uri = Uri.parse('${GeocodeService.baseUrl}/risk/by-city')
-          .replace(queryParameters: {'uf': uf, 'city': city});
-      final res = await http.get(uri);
-      if (res.statusCode == 200) {
-        _showSnack('Risco obtido com sucesso!');
-        // -> Aqui você pode navegar pra uma tela de resultado
-        // ou exibir o JSON/resumo
-      } else {
-        _showSnack('Erro ${res.statusCode}: ${res.body}');
-      }
-    } catch (e) {
-      _showSnack('Falha ao obter risco: $e');
-    } finally {
-      if (mounted) setState(() => _loadingRisk = false);
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => RiskResultScreen(uf: uf, city: city)),
+    );
+  }
+
+  void _abrirMapa() {
+    final uf = _cleanUf(_selectedUf);
+    if (uf.isEmpty) {
+      _showSnack('Escolha um estado para abrir o mapa.');
+      return;
     }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => MapScreen(uf: uf)),
+    );
   }
 
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  // ---------- ESTADO ----------
   Widget _buildUfTypeAhead() {
     return TypeAheadField<Map<String, dynamic>>(
       hideOnEmpty: true,
       hideOnLoading: false,
       suggestionsCallback: (pattern) async {
-        // Busca ESTADOS como no site do Nominatim
-        return await GeocodeService.searchStates(pattern);
+        return GeocodeService.searchStates(pattern);
       },
       builder: (context, controller, focusNode) {
-        // Vincula controller para mostrar texto selecionado
-        _ufController.value = controller.value;
+        _ufFieldCtrl = controller;
         return TextField(
-          controller: _ufController,
+          controller: controller,
           focusNode: focusNode,
           decoration: const InputDecoration(
             labelText: 'Estado (digite para buscar)',
@@ -90,30 +83,29 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
-      itemBuilder: (context, suggestion) {
-        final state = suggestion['state'] ?? '';
-        final uf = (suggestion['uf'] ?? '').toString().toUpperCase();
-        final display = suggestion['display_name'] ?? state;
+      itemBuilder: (context, s) {
+        final state = s['state'] ?? '';
+        final uf = (s['uf'] ?? '').toString().toUpperCase();
+        final display = s['display_name'] ?? state;
         return ListTile(
           title: Text('$state${uf.isNotEmpty ? ' ($uf)' : ''}'),
           subtitle: Text(display, maxLines: 1, overflow: TextOverflow.ellipsis),
         );
       },
-      onSelected: (suggestion) {
-        final uf = (suggestion['uf'] ?? '').toString().toUpperCase();
-        final stateName = suggestion['state']?.toString() ?? '';
+      onSelected: (s) {
+        final uf = _cleanUf(s['uf']);
+        final stateName = s['state']?.toString() ?? '';
         setState(() {
-          _selectedUf = uf;                // salva a sigla
-          _selectedStateName = stateName;  // salva o nome
-          _ufController.text = uf.isNotEmpty ? '$stateName ($uf)' : stateName;
-          // limpa a cidade quando trocar de estado
+          _selectedUf = uf;
+          _selectedStateName = stateName;
           _selectedCity = null;
-          _cityController.clear();
         });
+        _cityFieldCtrl?.clear();
+        _ufFieldCtrl?.text = stateName.isNotEmpty ? '$stateName ($uf)' : uf;
       },
-      errorBuilder: (context, error) => Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Text('Erro ao buscar estados: $error'),
+      errorBuilder: (context, error) => const Padding(
+        padding: EdgeInsets.all(12.0),
+        child: Text('Erro ao buscar estados.'),
       ),
       emptyBuilder: (context) => const Padding(
         padding: EdgeInsets.all(12.0),
@@ -122,51 +114,49 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ---------- CIDADE (filtrada rigidamente pela UF) ----------
   Widget _buildCityTypeAhead() {
     return TypeAheadField<Map<String, dynamic>>(
       hideOnEmpty: true,
       hideOnLoading: false,
       suggestionsCallback: (pattern) async {
-        if ((_selectedUf ?? '').isEmpty) return [];
-        return await GeocodeService.searchCities(
-          cityQuery: pattern,
-          uf: _selectedUf!,
-        );
+        final uf = _cleanUf(_selectedUf);
+        if (uf.isEmpty) return [];
+        // >>> correção aqui: cityQuery <<<
+        return GeocodeService.searchCities(cityQuery: pattern, uf: uf);
       },
       builder: (context, controller, focusNode) {
-        _cityController.value = controller.value;
+        _cityFieldCtrl = controller;
         return TextField(
-          controller: _cityController,
+          controller: controller,
           focusNode: focusNode,
           decoration: InputDecoration(
             labelText: 'Cidade (digite para buscar)',
-            hintText: _selectedUf == null
+            hintText: (_selectedUf == null || _selectedUf!.isEmpty)
                 ? 'Escolha o estado primeiro'
-                : 'Ex.: campinas, santos...',
+                : 'Ex.: santos, campinas...',
             border: const OutlineInputBorder(),
           ),
           enabled: _selectedUf != null && _selectedUf!.isNotEmpty,
         );
       },
-      itemBuilder: (context, suggestion) {
-        final city = suggestion['city'] ?? '';
-        final uf = (suggestion['uf'] ?? '').toString().toUpperCase();
-        final display = suggestion['display_name'] ?? '';
+      itemBuilder: (context, s) {
+        final city = (s['city'] ?? s['name'] ?? '').toString();
+        final uf = (s['uf'] ?? '').toString().toUpperCase();
+        final display = s['display_name'] ?? '';
         return ListTile(
           title: Text('$city${uf.isNotEmpty ? ' - $uf' : ''}'),
           subtitle: Text(display, maxLines: 1, overflow: TextOverflow.ellipsis),
         );
       },
-      onSelected: (suggestion) {
-        final city = suggestion['city']?.toString() ?? '';
-        setState(() {
-          _selectedCity = city;
-          _cityController.text = city;
-        });
+      onSelected: (s) {
+        final city = (s['city'] ?? s['name'] ?? '').toString();
+        setState(() => _selectedCity = city);
+        _cityFieldCtrl?.text = city; // exibe a cidade no campo
       },
-      errorBuilder: (context, error) => Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Text('Erro ao buscar cidades: $error'),
+      errorBuilder: (context, error) => const Padding(
+        padding: EdgeInsets.all(12.0),
+        child: Text('Erro ao buscar cidades.'),
       ),
       emptyBuilder: (context) => const Padding(
         padding: EdgeInsets.all(12.0),
@@ -177,19 +167,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('AlagAlert')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Estado — TypeAhead como Nominatim
           _buildUfTypeAhead(),
           const SizedBox(height: 16),
-          // Cidade — TypeAhead filtrando pelo UF escolhido
           _buildCityTypeAhead(),
           const SizedBox(height: 24),
-          // Botão "Ver risco"
           SizedBox(
             height: 48,
             child: FilledButton(
@@ -199,6 +185,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Text('Ver risco'),
             ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _abrirMapa,
+            icon: const Icon(Icons.map_outlined),
+            label: const Text('Abrir mapa por UF'),
           ),
         ],
       ),

@@ -1,5 +1,4 @@
 ﻿import 'package:flutter/material.dart';
-import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/map_screen.dart';
 
@@ -7,30 +6,27 @@ void main() {
   runApp(const AlagAlertApp());
 }
 
-class AlagAlertApp extends StatefulWidget {
+class AlagAlertApp extends StatelessWidget {
   const AlagAlertApp({super.key});
-  @override
-  State<AlagAlertApp> createState() => _AlagAlertAppState();
-}
-
-class _AlagAlertAppState extends State<AlagAlertApp> {
-  ThemeMode _mode = ThemeMode.system;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'AlagAlert',
-      theme: buildTheme(Brightness.light),
-      darkTheme: buildTheme(Brightness.dark),
-      themeMode: _mode,
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: const Color(0xFF6563A4),
+        scaffoldBackgroundColor: const Color(0xFFF7F5FA),
+      ),
       routes: {
         '/': (_) => const HomeScreen(),
         '/map': (ctx) {
-          final uf = ModalRoute.of(ctx)!.settings.arguments as String? ?? "SP";
-          return MapScreen(uf: uf);
+          final args =
+              ModalRoute.of(ctx)!.settings.arguments as Map<String, String>;
+          return MapScreen(uf: args['uf']!);
         },
       },
-      debugShowCheckedModeBanner: false,
     );
   }
 }
